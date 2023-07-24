@@ -13,7 +13,6 @@ import ru.netology.nmedia.entity.PostEntity
 import ru.netology.nmedia.entity.PostRemoteKeyEntity
 import ru.netology.nmedia.entity.toEntity
 import ru.netology.nmedia.error.ApiError
-import kotlinx.coroutines.flow.firstOrNull
 
 @OptIn(ExperimentalPagingApi::class)
 class PostRemoteMediator(
@@ -28,17 +27,18 @@ class PostRemoteMediator(
     ): MediatorResult {
         try {
             val response = when (loadType) {
-                LoadType.REFRESH -> {/*service.getLatest(state.config.initialLoadSize)*/
-                    val latestItems = service.getLatest(state.config.initialLoadSize)
+                LoadType.REFRESH -> {
                     val lastItemId = postRemoteKeyDao.max()
-                    if (lastItemId == latestItems.firstOrNull()?.id) {
-                        MediatorResult.Success(endOfPaginationReached = true)
+                    if (lastItemId == null) {
+                        // MediatorResult.Success(endOfPaginationReached = true)
+                        service.getLatest(state.config.initialLoadSize)
                     } else {
                         service.getAfter(lastItemId, state.config.initialLoadSize)
                     }
                 }
                 LoadType.PREPEND -> return MediatorResult.Success(
-                    endOfPaginationReached = true )/*{
+                    endOfPaginationReached = true
+                )/*{
                     val id = postRemoteKeyDao.max() ?: return MediatorResult.Success(
                         endOfPaginationReached = false
                     )
@@ -63,20 +63,32 @@ class PostRemoteMediator(
             db.withTransaction {
                 when (loadType) {
                     LoadType.REFRESH -> {
-                        postRemoteKeyDao.removeAll()
-                        postRemoteKeyDao.insert(
-                            listOf(
-                                PostRemoteKeyEntity(
-                                    type = PostRemoteKeyEntity.KeyType.AFTER,
-                                    id = body.first().id,
-                                ),
-                                PostRemoteKeyEntity(
-                                    type = PostRemoteKeyEntity.KeyType.BEFORE,
-                                    id = body.last().id,
-                                ),
+                        if (postRemoteKeyDao.max() == null) {
+                            //postRemoteKeyDao.removeAll()
+                            postRemoteKeyDao.insert(
+                                listOf(
+                                    PostRemoteKeyEntity(
+                                        type = PostRemoteKeyEntity.KeyType.AFTER,
+                                        id = body.first().id,
+                                    ),
+                                    PostRemoteKeyEntity(
+                                        type = PostRemoteKeyEntity.KeyType.BEFORE,
+                                        id = body.last().id,
+                                    ),
+                                )
                             )
-                        )
-                        postDao.removeAll()
+                            postDao.removeAll()
+                        } else {
+                            postRemoteKeyDao.insert(
+                                listOf(
+                                    PostRemoteKeyEntity(
+                                        type = PostRemoteKeyEntity.KeyType.BEFORE,
+                                        id = body.last().id,
+                                    ),
+                                )
+                            )
+                            //postDao.removeAll()
+                        }
                     }
                     LoadType.PREPEND -> {
                         postRemoteKeyDao.insert(
